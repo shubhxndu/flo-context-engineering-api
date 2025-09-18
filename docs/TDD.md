@@ -65,10 +65,12 @@ Demo implementation for a workshop companion web app (5-10 concurrent users).
 
 - **organizer_accounts**: id, login_id, password_hash, created_at
 - **workshops**: id, code, title, description, agenda_json, start_at, status, primary_controller_id, created_by, created_at
-- **modules**: id, workshop_id, index, title, content_markdown, resources_jsonb, created_at
+- **modules**: id, workshop_id, index, title, content_markdown, created_at
+- **resources**: id, module_id, name, url, type, created_at
 - **participants**: id, workshop_id, name, email_hash, created_at
 - **organizers**: id, workshop_id, user_id, role, added_at
 - **state**: workshop_id, current_step_index, elapsed_ms, updated_at
+- **reactions**: id, workshop_id, module_id, participant_id, emoji, created_at
 
 ### 2.3 API Endpoints (skeleton)
 
@@ -77,29 +79,37 @@ Demo implementation for a workshop companion web app (5-10 concurrent users).
   - POST /join
   - GET /w/{code}/state
   - GET /w/{code}/modules
+  - GET /w/{code}/resources
   - POST /w/{code}/react
+  - GET /w/{code}/reactions/{module_id}
 
-- **Organizer (Auth cookie)**
+- **Organizer (Auth JWT)**
 
   - POST /organizer/login
+  - POST /organizer/refresh
+  - POST /organizer/logout
   - POST /o/workshops
   - POST /o/workshops/{id}/publish
   - POST /o/workshops/{id}/start
   - POST /o/workshops/{id}/end
   - POST /o/workshops/{id}/step
   - POST /o/workshops/{id}/modules
+  - POST /o/workshops/{id}/modules/{module_id}/resources
+  - DELETE /o/workshops/{id}/modules/{module_id}/resources/{resource_id}
   - PATCH /o/workshops/{id}/modules/reorder
   - GET /o/workshops/{id}/participants
+  - GET /o/workshops/{id}/reactions
   - POST /o/workshops/{id}/takeover
 
 ### 2.4 Technical Standards
 
-- Organizer cookie: httpOnly, signed, 8h max-age, idle-timeout 30m
-- Participant session: UUID with cookie persistence (1 day expiry) for demo reliability
-- Rate limits: reactions (1/15s; 1/min burst), joins (3/min/IP), organizer login (10/min/IP) - relaxed for demo
+- Organizer session: JWT tokens with 1h expiry + refresh tokens (24h expiry), httpOnly, secure
+- Participant session: JWT tokens with 8h expiry, cookie persistence for demo reliability
+- Rate limits: reactions (3/min per user, 20/hour), joins (3/min/IP), organizer login (5/min/IP)
 - Errors: standardized JSON { code, message, details? }
 - Schema migrations: Alembic; demo organizers seeded
-- Email Hashing: `email_hash` field will store a salted hash of the participant's email for privacy.
+- Email Hashing: `email_hash` field stores SHA-256 hash with salt for privacy
+- Security: CORS restricted, input validation via Pydantic, SQL injection prevention
 
 ### 2.5 Deployment (Heroku)
 
@@ -203,26 +213,32 @@ Demo implementation for a workshop companion web app (5-10 concurrent users).
 
 - **organizer_accounts**: id (uuid), login_id (text, unique), password_hash (text), created_at (timestamptz)
 - **workshops**: id (uuid), code (char(4), unique, A–Z+digits excl. 0/1/O/I), title (text), description (text), agenda_json (jsonb), start_at (timestamptz), status (enum: draft/published/live/ended), primary_controller_id (uuid, nullable), created_by (uuid), created_at (timestamptz)
-- **modules**: id (uuid), workshop_id (uuid fk), index (int), title (text), content_markdown (text), resources_jsonb (jsonb, stores a list of resource objects), created_at (timestamptz)
-- **participants**: id (uuid), workshop_id (uuid fk), name (text), email_hash (text, nullable), created_at (timestamptz)
+- **modules**: id (uuid), workshop_id (uuid fk), index (int), title (text), content_markdown (text), created_at (timestamptz)
+- **resources**: id (uuid), module_id (uuid fk), name (text), url (text), type (enum: link/pdf/video/image), description (text, nullable), created_at (timestamptz)
+- **participants**: id (uuid), workshop_id (uuid fk), name (text), email_hash (text, nullable), session_token (text, unique), created_at (timestamptz)
 - **organizers**: id (uuid), workshop_id (uuid fk), user_id (uuid fk organizer_accounts), role (enum: organizer/controller), added_at (timestamptz)
 - **state**: workshop_id (uuid pk/fk), current_step_index (int), elapsed_ms (bigint), updated_at (timestamptz)
-- **reaction_counters (ephemeral)**: in-memory only (workshop_id, module_id, emoji → count, updated_at)
+- **reactions**: id (uuid), workshop_id (uuid fk), module_id (uuid fk), participant_id (uuid fk), emoji (text), created_at (timestamptz), expires_at (timestamptz)
+- **organizer_sessions**: id (uuid), user_id (uuid fk), access_token_hash (text), refresh_token_hash (text), expires_at (timestamptz), created_at (timestamptz)
 
 ### 9.3 DTOs (Requests/Responses)
 
 - **Auth**
 
   - OrganizerLoginRequest { loginId, password }
-  - OrganizerLoginResponse { ok, organizerId }
+  - OrganizerLoginResponse { accessToken, refreshToken, expiresIn, user: { id, loginId } }
+  - RefreshTokenRequest { refreshToken }
+  - RefreshTokenResponse { accessToken, expiresIn }
   - JoinRequest { code, name, email? }
-  - JoinResponse { participantToken, workshop: { id, code, title, totalSteps }, state }
+  - JoinResponse { sessionToken, workshop: { id, code, title, totalSteps }, state }
 
 - **State/Modules/Resources**
 
   - GetStateResponse { currentStep, agenda, elapsedMs, upcoming }
-  - GetModulesResponse \[ { id, index, title, contentMarkdown, resources } ]
-  - GetResourcesResponse \[ { id, name, url, type } ] (This endpoint will now return the combined list of resources)
+  - GetModulesResponse \[ { id, index, title, contentMarkdown } ]
+  - GetResourcesResponse \[ { id, moduleId, name, url, type, description } ]
+  - CreateResourceRequest { name, url, type, description? }
+  - CreateResourceResponse { id, name, url, type, description, createdAt }
 
 - **Control**
 
@@ -230,13 +246,14 @@ Demo implementation for a workshop companion web app (5-10 concurrent users).
   - StartWorkshopRequest { workshopId }
   - EndWorkshopRequest { workshopId }
   - StepRequest { action: next|prev|goto, index? }
-  - TakeoverRequest { workshopId } (Logic will use a database transaction to ensure atomicity)
-  - ParticipantsListResponse \[ { participantId, name } ]
+  - TakeoverRequest { workshopId }
+  - ParticipantsListResponse \[ { participantId, name, joinedAt } ]
 
 - **Reactions**
 
-  - ReactionRequest { emoji }
-  - ReactionResponse { ok }
+  - ReactionRequest { emoji, moduleId? }
+  - ReactionResponse { ok, reactionId }
+  - GetReactionsResponse \[ { emoji, count, recentParticipants: \[name] } ]
 
 ### 9.4 API Standards
 
@@ -247,20 +264,25 @@ Demo implementation for a workshop companion web app (5-10 concurrent users).
 
 ### 9.5 Security & Limits
 
-- Organizer cookie: httpOnly, secure, signed; max-age 8h; idle-timeout 30m; manual logout
-- Participant session: UUID with cookie persistence (1 day expiry) for demo reliability
-- Rate limits: reactions 1/15s + 1/min burst; joins 3/min/IP; organizer login 10/min/IP (relaxed for demo)
-- Sanitization: markdown sanitized server-side and client-side
-- Email hashing: `email_hash` field will store a salted hash of the participant's email.
+- Organizer auth: JWT access tokens (1h expiry) + refresh tokens (24h expiry); httpOnly, secure
+- Participant session: JWT tokens (8h expiry) with cookie persistence for demo reliability
+- Token rotation: Access tokens auto-refresh; refresh tokens rotate on use
+- Rate limits: reactions 3/min per user + 20/hour; joins 3/min/IP; organizer login 5/min/IP
+- Input validation: All requests validated via Pydantic schemas
+- Sanitization: Markdown sanitized server-side (bleach) and client-side (DOMPurify)
+- Email hashing: SHA-256 with unique salt per participant
+- CORS: Restricted to frontend domain only
+- SQL Injection: Prevented via SQLAlchemy ORM and parameterized queries
 
 ### 9.6 Deployment (Heroku — Backend)
 
 - Buildpack: heroku/python
-- Procfile: `web: uvicorn app.main:app --host 0.0.0.0 --port $PORT`
-- Env vars: `DATABASE_URL`, `CORS_ORIGIN`, `COOKIE_SECRET`, `RATE_LIMITS`, `LOG_LEVEL`
+- Procfile: `release: alembic upgrade head` + `web: uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+- Env vars: `DATABASE_URL`, `CORS_ORIGIN`, `JWT_SECRET`, `JWT_REFRESH_SECRET`, `EMAIL_SALT`, `RATE_LIMITS`, `LOG_LEVEL`
 - DB: Supabase connection via `DATABASE_URL`
-- Migrations: Alembic run on release phase
-- Health: `/healthz`
+- Migrations: Alembic run on release phase before deployment
+- Health: `/healthz` with database connectivity check
+- Security: HTTPS enforced, secure headers middleware
 
 ---
 
