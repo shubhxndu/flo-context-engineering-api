@@ -6,24 +6,24 @@
 
 ## 0) Scope
 
-MVP implementation for a workshop companion web app.
+Demo implementation for a workshop companion web app (5-10 concurrent users).
 
-- **Frontend:** Next.js **Pages Router**, static export, deployed to **Heroku**
+- **Frontend:** Next.js **Pages Router**, SSR deployment to **Heroku**
 - **Backend:** FastAPI on **Heroku**
 - **DB:** Supabase Postgres
 - **Sync:** REST + polling (3s; pause when tab backgrounded)
-- **Auth:** Participant (code+name), Organizer (demo login, hashed pwd)
-- **State:** RTK Query for server state; minimal local state for UI
+- **Auth:** Participant (code+name+session persistence), Organizer (demo login, hashed pwd)
+- **State:** RTK Query for server state; cookie-based session persistence
 
 ---
 
 ## 1) Architecture Overview
 
-- **Frontend**: Next.js SPA with Pages Router. State via RTK Query. Polling every 3s for state/modules, 15s for reaction aggregates.
-- **Backend**: FastAPI app. Service layer with business logic, repository layer for DB access. Organizer session via cookie, participant identity via a new UUID on each join.
+- **Frontend**: Next.js SSR with Pages Router. State via RTK Query. Polling every 3s for state/modules, 15s for reaction aggregates. Session persistence via cookies.
+- **Backend**: FastAPI app. Service layer with business logic, repository layer for DB access. Organizer session via cookie, participant session with cookie persistence.
 - **Database**: Supabase Postgres. Tables: organizer_accounts, workshops, modules, participants, organizers, state.
-- **Deployment**: Both frontend and backend hosted on Heroku free dynos. A simple ping service (e.g., Kaffeine) will be used to prevent dyno sleeping.
-- **Observability**: Logs, health checks. No advanced metrics in MVP.
+- **Deployment**: Both frontend and backend hosted on Heroku (SSR for frontend). Optimized for 5-10 concurrent users (demo app).
+- **Observability**: Logs, health checks. No advanced metrics in demo version.
 
 ---
 
@@ -95,8 +95,8 @@ MVP implementation for a workshop companion web app.
 ### 2.4 Technical Standards
 
 - Organizer cookie: httpOnly, signed, 8h max-age, idle-timeout 30m
-- Participant identity: a new opaque UUID for each join request; not stored client-side for re-use.
-- Rate limits: reactions (1/15s; 1/min burst), joins (3/min/IP), organizer login (10/min/IP)
+- Participant session: UUID with cookie persistence (1 day expiry) for demo reliability
+- Rate limits: reactions (1/15s; 1/min burst), joins (3/min/IP), organizer login (10/min/IP) - relaxed for demo
 - Errors: standardized JSON { code, message, details? }
 - Schema migrations: Alembic; demo organizers seeded
 - Email Hashing: `email_hash` field will store a salted hash of the participant's email for privacy.
@@ -143,7 +143,7 @@ MVP implementation for a workshop companion web app.
 
 - RTK Query slices for participant + organizer APIs
 - Polling intervals: 3s for session state/modules, 15s for reactions
-- Participant identity: No persistent storage; new session created on each visit.
+- Participant identity: Cookie-based session persistence (1 day expiry) for demo reliability
 - Organizer: session cookie
 
 ### 3.3 UI Standards
@@ -158,9 +158,9 @@ MVP implementation for a workshop companion web app.
 
 ### 3.5 Deployment (Heroku)
 
-- Build: `next build && next export` → `out/`
-- Serve with Node static server
-- Procfile: `web: node server.js`
+- Build: `next build` for SSR deployment
+- Serve with Next.js production server
+- Procfile: `web: npm start`
 - Buildpacks: heroku/nodejs
 
 ---
@@ -170,7 +170,7 @@ MVP implementation for a workshop companion web app.
 - Backend: pytest unit + API contract tests
 - Frontend: Jest/RTL for RTK Query hooks + components
 - E2E smoke flow: join → publish → start → step → react → end
-- Load test: simulate 500 participants + reaction bursts
+- Load test: simulate 10 participants + reaction bursts (demo scope)
 
 ---
 
@@ -248,8 +248,8 @@ MVP implementation for a workshop companion web app.
 ### 9.5 Security & Limits
 
 - Organizer cookie: httpOnly, secure, signed; max-age 8h; idle-timeout 30m; manual logout
-- Participant token: opaque UUID created per session; no client-side persistence for re-use.
-- Rate limits: reactions 1/15s + 1/min burst; joins 3/min/IP; organizer login 10/min/IP
+- Participant session: UUID with cookie persistence (1 day expiry) for demo reliability
+- Rate limits: reactions 1/15s + 1/min burst; joins 3/min/IP; organizer login 10/min/IP (relaxed for demo)
 - Sanitization: markdown sanitized server-side and client-side
 - Email hashing: `email_hash` field will store a salted hash of the participant's email.
 
@@ -298,16 +298,16 @@ MVP implementation for a workshop companion web app.
 
 - **State**: RTK Query for server state; UI state local where trivial
 - **Polling**: 3s for state/modules; 15s for reaction aggregates; pause on `document.hidden`
-- **Identity**: No persistent storage for participants; a new session on each visit.
+- **Identity**: Cookie-based session persistence (1 day expiry) for demo reliability
 - **Markdown**: `react-markdown` + `rehype-sanitize` (allow links, lists, headings)
 - **Accessibility**: keyboard nav for arrows; ARIA for progress
 - **Errors**: render standardized JSON error messages; toasts for non-blocking issues
 
 ### 10.3 Deployment (Heroku — Frontend)
 
-- Build: `next build && next export` → `out/`
-- Serve: Node static server
-- Procfile: `web: node server.js`
+- Build: `next build` for SSR deployment
+- Serve: Next.js production server
+- Procfile: `web: npm start`
 - Buildpacks: heroku/nodejs
 
 ---
@@ -316,7 +316,7 @@ MVP implementation for a workshop companion web app.
 
 - **Performance**: initial load < 2s on mid-tier 4G; module view interactions < 100ms
 - **Reliability**: graceful polling resume after network loss
-- **Scalability**: up to 500 concurrent participants per workshop (polling-based)
+- **Scalability**: up to 10 concurrent participants per workshop (demo scope)
 - **Security**: basic OWASP A1–A3 hygiene; sanitized markdown; cookie protections; email hashing.
 
 ---

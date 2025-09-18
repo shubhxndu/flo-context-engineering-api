@@ -6,7 +6,7 @@
 
 ## 1) Overview
 
-A companion app for live workshops enabling late joiners to catch up on missed content and stay aligned with the presenter-controlled flow. - **Frontend:** Next.js (SPA) - **Backend:** FastAPI - **DB:** Supabase (Postgres) - **Sync:** REST + periodic polling (WebSockets parked)
+A companion demo app for live workshops enabling late joiners to catch up on missed content and stay aligned with the presenter-controlled flow (5-10 concurrent users). - **Frontend:** Next.js (SSR) - **Backend:** FastAPI - **DB:** Supabase (Postgres) - **Sync:** REST + periodic polling (WebSockets parked)
 
 ## 2) Goals & Non-Goals
 
@@ -22,6 +22,7 @@ A companion app for live workshops enabling late joiners to catch up on missed c
 - Progress bar (e.g., Module 3 of 10)
 - Resources section for discussed content (accessible anytime, no expiry)
 - Session end flow with "Workshop Ended --- Resources Available" page
+- Session persistence: participants maintain access across page refreshes (demo reliability)
 
 ### Non-Goals (Roadmap)
 
@@ -43,7 +44,8 @@ A companion app for live workshops enabling late joiners to catch up on missed c
 - View agenda, elapsed time, upcoming topics
 - Resources section with links for all discussed content
 - React with ephemeral emojis (vanish after display, not persistent)
-- Max 500 participants per workshop
+- Max 10 participants per workshop (demo scope)
+- Maintain session across page refreshes for demo reliability
 
 ### Organizers (multiple allowed)
 
@@ -76,7 +78,7 @@ A companion app for live workshops enabling late joiners to catch up on missed c
 
 ## 5) Functional Requirements (High Level)
 
-**FR-01 Auth (MVP):** Participants: workshop code + name (email optional). Organizers: Login ID + Password (hardcoded demo accounts; no signup). Passwords hashed. **FR-02 Attendance:** Mark "present" once upon successful join (no duration tracking). **FR-03 Modules:** Organizer defines ordered modules; text-based content with **fully rendered Markdown support**; medium size (fits mobile screen without scrolling). Content freezes at start but quick mid-session adds permitted. Reordering allowed before publishing. **FR-04 Step Control:** Single primary controller advances current module; first organizer to press Start is controller. If controller disconnects, others can take over manually via a "Take Control" button. **FR-05 Navigation:** Participants can navigate past modules; arrows only; **Back to Current Module** button. Progress bar displayed (e.g., 3 of 10). **FR-06 Reactions:** Ephemeral emoji reactions (👍 🎉 👏 ❤️ ✅). A user's own reaction appears immediately on their screen; reactions from others appear after the polling interval. **FR-07 Meta:** Title always visible; optional description in submenu; agenda, elapsed time, upcoming topics displayed. **FR-08 Resources:** Participants can view discussed content/resources at any time. Resources stored as text links (name, URL, type: link/pdf/video/image) in PostgreSQL. Each module can have an optional set of resources attached. At the end of the workshop, a single combined list of all resources will be available. **FR-09 Dashboard:** Participant list + total count visible to organizers (duplicates allowed). **FR-10 Sync:** Polling-based updates every 3 seconds. Pause polling if participant tab backgrounded. Emoji refresh interval: 15 seconds. **FR-11 Session End:** Organizer can end session → participants see status page with "Workshop Ended --- Resources Available".
+**FR-01 Auth (MVP):** Participants: workshop code + name (email optional). Organizers: Login ID + Password (hardcoded demo accounts; no signup). Passwords hashed. **FR-02 Attendance:** Mark "present" once upon successful join (no duration tracking). **FR-03 Modules:** Organizer defines ordered modules; text-based content with **fully rendered Markdown support**; medium size (fits mobile screen without scrolling). Content freezes at start but quick mid-session adds permitted. Reordering allowed before publishing. **FR-04 Step Control:** Single primary controller advances current module; first organizer to press Start is controller. If controller disconnects, others can take over manually via a "Take Control" button. **FR-05 Navigation:** Participants can navigate past modules; arrows only; **Back to Current Module** button. Progress bar displayed (e.g., 3 of 10). **FR-06 Reactions:** Ephemeral emoji reactions (👍 🎉 👏 ❤️ ✅). A user's own reaction appears immediately on their screen; reactions from others appear after the polling interval. **FR-07 Meta:** Title always visible; optional description in submenu; agenda, elapsed time, upcoming topics displayed. **FR-08 Resources:** Participants can view discussed content/resources at any time. Resources stored as text links (name, URL, type: link/pdf/video/image) in PostgreSQL. Each module can have an optional set of resources attached. At the end of the workshop, a single combined list of all resources will be available. **FR-09 Dashboard:** Participant list + total count visible to organizers (duplicates allowed). **FR-10 Sync:** Polling-based updates every 3 seconds. Pause polling if participant tab backgrounded. Emoji refresh interval: 15 seconds. **FR-11 Session End:** Organizer can end session → participants see status page with "Workshop Ended --- Resources Available". **FR-12 Session Persistence:** Cookie-based participant sessions (1 day expiry) for demo reliability - participants maintain access across page refreshes.
 
 ## 6) System Flows (to be detailed)
 
@@ -139,4 +141,4 @@ A companion app for live workshops enabling late joiners to catch up on missed c
 - Resources order: append only.
 - Session description: plain text.
 - Resources export: parked for roadmap.
-- Participants must re-enter the workshop code on every page refresh or new visit.
+- Participant sessions: Cookie-based persistence (1 day expiry) for demo reliability.
