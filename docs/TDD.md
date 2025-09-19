@@ -111,12 +111,21 @@ Demo implementation for a workshop companion web app (5-10 concurrent users).
 - Email Hashing: `email_hash` field stores SHA-256 hash with salt for privacy
 - Security: CORS restricted, input validation via Pydantic, SQL injection prevention
 
-### 2.5 Deployment (Heroku)
+### 2.5 Deployment (Heroku Backend)
 
-- Procfile: `web: uvicorn app.main:app --host 0.0.0.0 --port $PORT`
-- Buildpacks: heroku/python
-- Env vars: DB URL, COOKIE_SECRET, RATE_LIMITS, CORS_ORIGIN
-- Mitigation: Use a service like Kaffeine to ping the app and prevent dyno sleep.
+- **Procfile**: `release: alembic upgrade head` + `web: uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+- **Buildpack**: heroku/python (Python 3.11+)
+- **Environment Variables**:
+  - `DATABASE_URL` (Supabase connection string)
+  - `JWT_SECRET` (32+ character secret for JWT signing)
+  - `JWT_REFRESH_SECRET` (separate secret for refresh tokens)
+  - `EMAIL_SALT` (salt for email hashing)
+  - `CORS_ORIGIN` (frontend URL)
+  - `RATE_LIMITS` (JSON config for rate limiting)
+  - `LOG_LEVEL` (DEBUG/INFO/WARNING/ERROR)
+- **Database**: Supabase Postgres with automatic migrations on deploy
+- **Health Check**: `/healthz` endpoint with DB connectivity validation
+- **Security**: HTTPS enforced, secure headers middleware, CORS restrictions
 
 ---
 
@@ -158,20 +167,33 @@ Demo implementation for a workshop companion web app (5-10 concurrent users).
 
 ### 3.3 UI Standards
 
-- Tailwind + shadcn/ui components
-- Markdown rendering via react-markdown + rehype-sanitize
-- Mobile-first layout; modules sized to avoid vertical scroll
+- **Design System**: Tailwind CSS + shadcn/ui components with dark theme default
+- **Color Scheme**: Black background (#000000) with white primary CTAs (#ffffff)
+- **Typography**: Satoshi font family with responsive text hierarchy
+- **Theme**: Dark mode as default, light mode optional toggle
+- **Components**: Consistent focus rings, hover states, and accessibility patterns
+- **Markdown**: react-markdown + rehype-sanitize for module content rendering
+- **Layout**: Mobile-first responsive design; modules sized to avoid vertical scroll
+- **Animations**: Framer Motion for micro-interactions and page transitions
+- **Icons**: Lucide React icon system throughout the interface
 
 ### 3.4 Error Handling
 
 - API errors surfaced via toasts; standardized error codes
 
-### 3.5 Deployment (Heroku)
+### 3.5 Deployment (Heroku Frontend)
 
-- Build: `next build` for SSR deployment
-- Serve with Next.js production server
-- Procfile: `web: npm start`
-- Buildpacks: heroku/nodejs
+- **Build Process**: `next build` for SSR deployment (no static export)
+- **Serve**: Next.js production server with built-in optimizations
+- **Procfile**: `web: npm start` (uses Next.js start command)
+- **Buildpack**: heroku/nodejs (Node.js 18+ LTS)
+- **Environment Variables**:
+  - `NODE_ENV=production`
+  - `NEXT_PUBLIC_API_URL` (backend API URL)
+  - `NEXT_PUBLIC_APP_URL` (frontend URL for redirects)
+- **Dependencies**: All packages installed via `package.json`
+- **Performance**: Auto-optimization for fonts, images, and code splitting
+- **Monitoring**: Built-in Next.js analytics and performance monitoring
 
 ---
 
@@ -321,16 +343,30 @@ Demo implementation for a workshop companion web app (5-10 concurrent users).
 - **State**: RTK Query for server state; UI state local where trivial
 - **Polling**: 3s for state/modules; 15s for reaction aggregates; pause on `document.hidden`
 - **Identity**: Cookie-based session persistence (1 day expiry) for demo reliability
+- **Design System**: Dark theme default (black bg, white CTAs) following shadcn/ui patterns
+- **Typography**: Satoshi font with responsive hierarchy; logo uses Sorts Mill Goudy
+- **Color Palette**: Primary white (#ffffff), secondary gray-800, accent blue-500
+- **Components**: Consistent focus rings, hover states, micro-animations
 - **Markdown**: `react-markdown` + `rehype-sanitize` (allow links, lists, headings)
-- **Accessibility**: keyboard nav for arrows; ARIA for progress
+- **Accessibility**: keyboard nav for arrows; ARIA for progress; focus management
+- **Animations**: Framer Motion for page transitions and component interactions
+- **Icons**: Lucide React for consistent iconography
 - **Errors**: render standardized JSON error messages; toasts for non-blocking issues
 
 ### 10.3 Deployment (Heroku — Frontend)
 
-- Build: `next build` for SSR deployment
-- Serve: Next.js production server
-- Procfile: `web: npm start`
-- Buildpacks: heroku/nodejs
+- **Build Process**: `next build` for SSR deployment with automatic optimizations
+- **Runtime**: Next.js production server (`npm start`)
+- **Procfile**: `web: npm start`
+- **Buildpack**: heroku/nodejs (Node.js 18.x LTS)
+- **Build Command**: `npm run build` (includes TypeScript compilation and optimization)
+- **Environment Setup**:
+  - `NODE_ENV=production`
+  - `NEXT_PUBLIC_API_URL` (backend FastAPI URL)
+  - `NEXT_PUBLIC_APP_URL` (frontend URL)
+- **Asset Optimization**: Automatic font optimization, image compression, and code splitting
+- **Caching**: Static assets cached with appropriate headers
+- **Performance**: Built-in Next.js performance monitoring and analytics
 
 ---
 
